@@ -66,6 +66,9 @@ def roman_to_telugu(text):
     except:
         return text
 
+# --------------------------------------------------
+# AUTH
+# --------------------------------------------------
 def authenticate(username, password):
     if not os.path.exists(USERS):
         return False
@@ -87,6 +90,28 @@ def is_admin():
 def next_serial():
     df = safe_read(NEW)
     return 1 if df.empty else int(df["serial_no"].max()) + 1
+
+# --------------------------------------------------
+# ANNOTATOR STORAGE
+# --------------------------------------------------
+def ensure_annotator(name, username):
+    df = safe_read(ANNOTATORS)
+
+    if df.empty or name not in df["name"].values:
+        new_row = {
+            "name": name,
+            "username": username,
+            "contributions": 0,
+            "last_active": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_csv(ANNOTATORS, index=False, encoding=ENC)
+
+def increment_contribution(name):
+    df = safe_read(ANNOTATORS)
+    df.loc[df["name"] == name, "contributions"] += 1
+    df.loc[df["name"] == name, "last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    df.to_csv(ANNOTATORS, index=False, encoding=ENC)
 
 # --------------------------------------------------
 # DUPLICATE CHECK
@@ -118,6 +143,8 @@ def login():
             session["username"] = username
             session["annotator"] = name if name else username
             session["role"] = "admin" if username == "admin" else "annotator"
+
+            ensure_annotator(session["annotator"], username)
             return redirect("/welcome")
 
         return render_template("login.html", error="Invalid credentials")
@@ -146,39 +173,42 @@ def annotate():
         return redirect("/")
 
     message = None
+    name = session["annotator"]
 
     if request.method == "POST":
         input_text = request.form.get("proverb", "").strip()
         meaning = request.form.get("meaning_english", "")
         keywords = request.form.get("keywords", "")
-        annotator = session["annotator"]
 
-        if is_telugu(input_text):
-            telugu = input_text
-            english = telugu_to_roman(input_text)
+        if not input_text:
+            message = "❌ Proverb required"
         else:
-            english = input_text
-            telugu = roman_to_telugu(input_text)
+            if is_telugu(input_text):
+                telugu = input_text
+                english = telugu_to_roman(input_text)
+            else:
+                english = input_text
+                telugu = roman_to_telugu(input_text)
 
-        if check_duplicate(telugu, english):
-            message = "❌ Duplicate proverb found"
-        else:
-            df = safe_read(NEW)
+            if check_duplicate(telugu, english):
+                message = "❌ Duplicate proverb found"
+            else:
+                df = safe_read(NEW)
 
-            new_row = {
-                "serial_no": next_serial(),
-                "proverb_telugu": telugu,
-                "proverb_english": english,
-                "meaning_english": meaning,
-                "keywords": keywords,
-                "annotator": annotator,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+                new_row = {
+                    "serial_no": next_serial(),
+                    "proverb_telugu": telugu,
+                    "proverb_english": english,
+                    "meaning_english": meaning,
+                    "keywords": keywords,
+                    "annotator": name,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
 
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            df.to_csv(NEW, index=False, encoding=ENC)
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                df.to_csv(NEW, index=False, encoding=ENC)
 
-            message = "✅ Sent for admin approval"
+                message = "✅ Sent for admin approval"
 
     return render_template("annotate.html", message=message)
 
@@ -219,12 +249,8 @@ def approve(serial_no):
 
     repo_df.to_csv(REPO, index=False, encoding=ENC)
 
-    # increment contribution ONLY now
     annotator = row.iloc[0]["annotator"]
-    ann_df = safe_read(ANNOTATORS)
-    if not ann_df.empty and annotator in ann_df["name"].values:
-        ann_df.loc[ann_df["name"] == annotator, "contributions"] += 1
-        ann_df.to_csv(ANNOTATORS, index=False, encoding=ENC)
+    increment_contribution(annotator)
 
     new_df = new_df[new_df["serial_no"] != serial_no]
     new_df.to_csv(NEW, index=False, encoding=ENC)
@@ -249,7 +275,7 @@ def logout():
     return redirect("/")
 
 # --------------------------------------------------
-# RUN
+# RUN (Render Compatible)
 # --------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
