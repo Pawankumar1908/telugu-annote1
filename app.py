@@ -5,9 +5,9 @@ import os
 from indic_transliteration import sanscript
 from indic_transliteration.sanscript import transliterate
 
-# --------------------------------------------------
+# ---------------------------------------
 # APP CONFIG
-# --------------------------------------------------
+# ---------------------------------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "local_dev_secret")
 
@@ -20,9 +20,9 @@ ENC = "utf-8-sig"
 
 os.makedirs(DATA, exist_ok=True)
 
-# --------------------------------------------------
+# ---------------------------------------
 # FILE SAFETY
-# --------------------------------------------------
+# ---------------------------------------
 def ensure_file(path, columns):
     if not os.path.exists(path):
         pd.DataFrame(columns=columns).to_csv(path, index=False, encoding=ENC)
@@ -37,9 +37,9 @@ ensure_file(REPO, [
     "meaning_english", "keywords"
 ])
 
-# --------------------------------------------------
+# ---------------------------------------
 # HELPERS
-# --------------------------------------------------
+# ---------------------------------------
 def safe_read(path):
     if os.path.exists(path):
         return pd.read_csv(path, encoding=ENC)
@@ -66,56 +66,6 @@ def roman_to_telugu(text):
     except:
         return text
 
-# --------------------------------------------------
-# AUTH
-# --------------------------------------------------
-def authenticate(username, password):
-    if not os.path.exists(USERS):
-        return False
-
-    df = pd.read_csv(USERS, encoding=ENC)
-
-    if "username" not in df.columns:
-        df.columns = ["username", "password"]
-
-    df["username"] = df["username"].astype(str).str.lower().str.strip()
-    df["password"] = df["password"].astype(str).str.strip()
-
-    return ((df["username"] == username.lower()) &
-            (df["password"] == password)).any()
-
-def is_admin():
-    return session.get("role") == "admin"
-
-def next_serial():
-    df = safe_read(NEW)
-    return 1 if df.empty else int(df["serial_no"].max()) + 1
-
-# --------------------------------------------------
-# ANNOTATOR STORAGE
-# --------------------------------------------------
-def ensure_annotator(name, username):
-    df = safe_read(ANNOTATORS)
-
-    if df.empty or name not in df["name"].values:
-        new_row = {
-            "name": name,
-            "username": username,
-            "contributions": 0,
-            "last_active": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        df.to_csv(ANNOTATORS, index=False, encoding=ENC)
-
-def increment_contribution(name):
-    df = safe_read(ANNOTATORS)
-    df.loc[df["name"] == name, "contributions"] += 1
-    df.loc[df["name"] == name, "last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df.to_csv(ANNOTATORS, index=False, encoding=ENC)
-
-# --------------------------------------------------
-# DUPLICATE CHECK
-# --------------------------------------------------
 def check_duplicate(telugu, english):
     key_tel = normalize(telugu)
     key_eng = normalize(english)
@@ -123,98 +73,109 @@ def check_duplicate(telugu, english):
     for src in [REPO, NEW]:
         df = safe_read(src)
         for _, row in df.iterrows():
-            if (normalize(str(row["proverb_telugu"])) == key_tel or
-                normalize(str(row["proverb_english"])) == key_eng):
+            if (normalize(row["proverb_telugu"]) == key_tel or
+                normalize(row["proverb_english"]) == key_eng):
                 return True
     return False
 
-# --------------------------------------------------
+def next_serial():
+    df = safe_read(NEW)
+    return 1 if df.empty else int(df["serial_no"].max()) + 1
+
+def is_admin():
+    return session.get("role") == "admin"
+
+# ---------------------------------------
+# VERIFY ROUTE (FIXED)
+# ---------------------------------------
+@app.route("/verify", methods=["POST"])
+def verify():
+    data = request.get_json()
+    value = data.get("value", "").strip()
+
+    if not value:
+        return jsonify({"status": "empty"})
+
+    if is_telugu(value):
+        telugu = value
+        english = telugu_to_roman(value)
+    else:
+        english = value
+        telugu = roman_to_telugu(value)
+
+    if check_duplicate(telugu, english):
+        return jsonify({
+            "status": "exists",
+            "telugu": telugu,
+            "english": english
+        })
+
+    return jsonify({
+        "status": "new",
+        "telugu": telugu,
+        "english": english
+    })
+
+# ---------------------------------------
 # LOGIN
-# --------------------------------------------------
+# ---------------------------------------
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form.get("username", "").strip().lower()
-        password = request.form.get("password", "").strip()
-        name = request.form.get("name", "").strip()
+        username = request.form.get("username")
+        password = request.form.get("password")
 
-        if authenticate(username, password):
-            session.clear()
-            session["username"] = username
-            session["annotator"] = name if name else username
-            session["role"] = "admin" if username == "admin" else "annotator"
+        if username == "admin" and password == "admin":
+            session["role"] = "admin"
+            return redirect("/admin/dashboard")
 
-            ensure_annotator(session["annotator"], username)
-            return redirect("/welcome")
-
-        return render_template("login.html", error="Invalid credentials")
+        session["annotator"] = username
+        session["role"] = "annotator"
+        return redirect("/annotate")
 
     return render_template("login.html")
 
-# --------------------------------------------------
-# WELCOME
-# --------------------------------------------------
-@app.route("/welcome")
-def welcome():
-    if "annotator" not in session:
-        return redirect("/")
-
-    if is_admin():
-        return redirect("/admin/dashboard")
-
-    return render_template("welcome.html", name=session["annotator"])
-
-# --------------------------------------------------
+# ---------------------------------------
 # ANNOTATE
-# --------------------------------------------------
+# ---------------------------------------
 @app.route("/annotate", methods=["GET", "POST"])
 def annotate():
-    if "annotator" not in session or is_admin():
+    if "role" not in session or is_admin():
         return redirect("/")
 
     message = None
-    name = session["annotator"]
 
     if request.method == "POST":
-        input_text = request.form.get("proverb", "").strip()
-        meaning = request.form.get("meaning_english", "")
-        keywords = request.form.get("keywords", "")
+        telugu = request.form.get("proverb_telugu")
+        english = request.form.get("proverb_english")
+        meaning = request.form.get("meaning_english")
+        keywords = request.form.get("keywords")
 
-        if not input_text:
-            message = "❌ Proverb required"
+        if not check_duplicate(telugu, english):
+            df = safe_read(NEW)
+
+            new_row = {
+                "serial_no": next_serial(),
+                "proverb_telugu": telugu,
+                "proverb_english": english,
+                "meaning_english": meaning,
+                "keywords": keywords,
+                "annotator": session["annotator"],
+                "timestamp": datetime.now()
+            }
+
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            df.to_csv(NEW, index=False, encoding=ENC)
+
+            message = "Sent for admin approval"
         else:
-            if is_telugu(input_text):
-                telugu = input_text
-                english = telugu_to_roman(input_text)
-            else:
-                english = input_text
-                telugu = roman_to_telugu(input_text)
-
-            if check_duplicate(telugu, english):
-                message = "❌ Duplicate proverb found"
-            else:
-                df = safe_read(NEW)
-
-                new_row = {
-                    "serial_no": next_serial(),
-                    "proverb_telugu": telugu,
-                    "proverb_english": english,
-                    "meaning_english": meaning,
-                    "keywords": keywords,
-                    "annotator": name,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-
-                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                df.to_csv(NEW, index=False, encoding=ENC)
-
-                message = "✅ Sent for admin approval"
+            message = "Duplicate found"
 
     return render_template("annotate.html", message=message)
 
-# --------------------------------------------------
+# ---------------------------------------
 # ADMIN
-# --------------------------------------------------
+# ---------------------------------------
 @app.route("/admin/dashboard")
 def admin_dashboard():
     if not is_admin():
@@ -236,24 +197,19 @@ def approve(serial_no):
     new_df = safe_read(NEW)
     row = new_df[new_df["serial_no"] == serial_no]
 
-    if row.empty:
-        return redirect("/admin/new")
+    if not row.empty:
+        repo_df = safe_read(REPO)
+        repo_df = pd.concat([repo_df, row[[
+            "proverb_telugu",
+            "proverb_english",
+            "meaning_english",
+            "keywords"
+        ]]], ignore_index=True)
 
-    repo_df = safe_read(REPO)
-    repo_df = pd.concat([repo_df, row[[
-        "proverb_telugu",
-        "proverb_english",
-        "meaning_english",
-        "keywords"
-    ]]], ignore_index=True)
+        repo_df.to_csv(REPO, index=False, encoding=ENC)
 
-    repo_df.to_csv(REPO, index=False, encoding=ENC)
-
-    annotator = row.iloc[0]["annotator"]
-    increment_contribution(annotator)
-
-    new_df = new_df[new_df["serial_no"] != serial_no]
-    new_df.to_csv(NEW, index=False, encoding=ENC)
+        new_df = new_df[new_df["serial_no"] != serial_no]
+        new_df.to_csv(NEW, index=False, encoding=ENC)
 
     return redirect("/admin/new")
 
@@ -266,17 +222,18 @@ def reject(serial_no):
     df.to_csv(NEW, index=False, encoding=ENC)
     return redirect("/admin/new")
 
-# --------------------------------------------------
-# LOGOUT
-# --------------------------------------------------
+@app.route("/admin/repository")
+def admin_repository():
+    if not is_admin():
+        return redirect("/")
+    records = safe_read(REPO).to_dict(orient="records")
+    return render_template("admin_repository.html", records=records)
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
 
-# --------------------------------------------------
-# RUN (Render Compatible)
-# --------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
