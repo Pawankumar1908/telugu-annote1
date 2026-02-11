@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="login-card">
+    <h2 class="login-title">Login</h2>
+
+    <form method="POST" action="/">
+
+        <!-- Annotator Name -->
+        <input 
+            type="text" 
+            name="annotator" 
+            placeholder="Your Name" 
+            required
+        >
+
+        <!-- Username -->
+        <input 
+            type="text" 
+            name="username" 
+            placeholder="Username" 
+            required
+        >
+
+        <!-- Password -->
+        <div class="password-row">
+            <input 
+                type="password" 
+                id="password" 
+                name="password" 
+                placeholder="Password" 
+                required
+            >
+            <span class="eye" onclick="togglePassword()">👁</span>
+        </div>
+
+        <!-- Login Button -->
+        <button type="submit" class="submit-btn">
+            Login
+        </button>
+
+        {% if error %}
+        <div class="login-error">
+            {{ error }}
+        </div>
+        {% endif %}
+
+    </form>
+</div>
+
+<script>
+function togglePassword() {
+    const p = document.getElementById("password");
+    p.type = p.type === "password" ? "text" : "password";
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>New Annotations</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+<a href="/admin/dashboard" class="admin-back-btn">← Back</a>
+
+<div class="admin-container">
+  <div class="admin-card">
+
+    <!-- HEADER -->
+    <div class="admin-header">
+      <div class="admin-count-top">
+        Total Records: {{ records|length }}
+      </div>
+      <h1 class="admin-title">New Annotations</h1>
+    </div>
+
+    {% if records %}
+      {% for r in records %}
+      <div class="repo-item">
+
+        <div class="repo-serial">#{{ r.serial_no }}</div>
+
+        <p><b>Telugu:</b> {{ r.proverb_telugu }}</p>
+        <p><b>English:</b> {{ r.proverb_english }}</p>
+        <p><b>Meaning:</b> {{ r.meaning_english }}</p>
+        <p><b>Keywords:</b> {{ r.keywords }}</p>
+        <p><b>Annotator:</b> {{ r.annotator }}</p>
+
+        <a href="/admin/approve/{{ r.serial_no }}">
+          <button class="submit-btn">APPROVE</button>
+        </a>
+
+      </div>
+      {% endfor %}
+    {% else %}
+      <p style="text-align:center; opacity:0.7;">No new annotations</p>
+    {% endif %}
+
+  </div>
+</div>
+
+
+<script>
+function filterNew(){
+  const q = event.target.value.toLowerCase();
+  document.querySelectorAll("#newList .repo-item").forEach(item=>{
+    item.style.display = item.innerText.toLowerCase().includes(q)
+      ? "block" : "none";
+  });
+}
+</script>
+
+</body>
+</html>

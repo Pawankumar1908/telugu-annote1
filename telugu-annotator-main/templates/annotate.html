@@ -1,0 +1,103 @@
+<link rel="stylesheet" href="/static/style.css">
+
+<div class="cosmic-wrapper">
+  <div class="cosmic-card">
+
+    <h1 class="user-name">{{ name }}</h1>
+    <p class="contrib-count">Contributions: {{ count }}</p>
+
+    <!-- Proverb Telugu -->
+    <div class="input-row">
+        <input id="telugu" placeholder="Proverb (Telugu)">
+        <button type="button" class="tick-btn" onclick="verify('telugu')">✔</button>
+    </div>
+    <small id="telugu-status" class="status-text"></small>
+
+
+    <!-- Proverb English (NEW FIELD) -->
+    <div class="input-row">
+      <input id="english" placeholder="Proverb (English)">
+      <button type="button" class="tick-btn" onclick="verify('english')">✔</button>
+    </div>
+    <small id="english-status" class="status-text"></small>
+
+    <!-- Meaning -->
+    <textarea id="meaning" placeholder="Meaning (English)"></textarea>
+
+    <!-- Keywords -->
+    <input id="keywords" placeholder="Keywords (comma separated)">
+
+    <form method="post" onsubmit="sync()">
+      <input type="hidden" name="proverb_telugu" id="h_telugu">
+      <input type="hidden" name="proverb_english" id="h_english">
+      <input type="hidden" name="meaning_english" id="h_meaning">
+      <input type="hidden" name="keywords" id="h_keywords">
+      <button class="submit-btn">Submit Contribution</button>
+    </form>
+
+    <a href="/logout">
+      <button class="logout-btn">Logout</button>
+    </a>
+
+  </div>
+</div>
+
+<script>
+async function verify(field){
+  const telInput = document.getElementById("telugu");
+  const engInput = document.getElementById("english");
+
+  const telStatus = document.getElementById("telugu-status");
+  const engStatus = document.getElementById("english-status");
+
+  const input = document.getElementById(field);
+  const status = document.getElementById(field + "-status");
+  const v = input.value.trim();
+
+  if(!v) return;
+
+  /* 🔥 RESET BOTH FIELDS FIRST */
+  telInput.classList.remove("ok", "error");
+  engInput.classList.remove("ok", "error");
+  telStatus.innerText = "";
+  engStatus.innerText = "";
+
+  const res = await fetch("/verify", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({value: v})
+  });
+
+  const d = await res.json();
+
+  if(d.status === "exists"){
+    // 🔴 ALREADY EXISTS
+    input.classList.add("error");
+    status.innerText = "Already exists";
+
+    telInput.value = d.data.proverb_telugu || "";
+    engInput.value = d.data.proverb_english || "";
+    meaning.value = d.data.meaning_english || "";
+    keywords.value = d.data.keywords || "";
+
+  } else {
+    // 🟢 NEW ENTRY
+    input.classList.add("ok");
+    status.innerText = "New entry";
+
+    if(field === "telugu") engInput.value = d.roman;
+    if(field === "english") telInput.value = d.roman;
+
+    /* clear old data */
+    meaning.value = "";
+    keywords.value = "";
+  }
+}
+
+function sync(){
+  h_telugu.value = telugu.value;
+  h_english.value = english.value;
+  h_meaning.value = meaning.value;
+  h_keywords.value = keywords.value;
+}
+</script>

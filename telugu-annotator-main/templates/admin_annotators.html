@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Annotators</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="cosmic-card">
+    <h2 class="user-name">👥 Annotators</h2>
+
+    {% if annotators %}
+        <table style="width:100%; margin-top:25px; border-collapse:collapse;">
+            <thead>
+                <tr style="color:#ffd700;">
+                    <th align="left">Name</th>
+                    <th align="left">Username</th>
+                    <th align="center">Contributions</th>
+                    <th align="left">Last Active</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in annotators %}
+                <tr style="border-top:1px solid rgba(255,215,0,0.3);">
+                    <td>{{ a.name }}</td>
+                    <td>{{ a.username }}</td>
+                    <td align="center">{{ a.contributions }}</td>
+                    <td>{{ a.last_active }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p style="margin-top:20px;">No annotators yet.</p>
+    {% endif %}
+
+    <a href="/admin/dashboard">
+        <button class="submit-btn" style="margin-top:30px;">⬅ Back</button>
+    </a>
+</div>
+
+</body>
+</html>

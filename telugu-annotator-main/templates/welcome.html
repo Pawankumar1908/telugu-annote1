@@ -1,0 +1,24 @@
+<link rel="stylesheet" href="/static/style.css">
+
+<div class="cosmic-wrapper">
+  <div class="cosmic-card welcome-card">
+
+    <h1 class="welcome-title">Welcome</h1>
+    <h2 class="welcome-name">{{ name }}</h2>
+
+    <div class="welcome-actions">
+      <a href="/annotate">
+        <button class="welcome-btn">Go to Annotation</button>
+      </a>
+
+      {% if session.get("is_admin") %}
+      <a href="/admin">
+        <button class="welcome-btn secondary">Admin Dashboard</button>
+      </a>
+      {% endif %}
+    </div>
+
+    <a href="/logout" class="welcome-logout">Logout</a>
+
+  </div>
+</div>
